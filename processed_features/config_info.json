@@ -1,0 +1,15 @@
+{
+    "config_name": "BALANCED",
+    "total_features": 719,
+    "stylometric": 18,
+    "perplexity": 1,
+    "tfidf_components": 400,
+    "bert_components": 300,
+    "tfidf_variance": "66.92%",
+    "bert_variance": "94.93%",
+    "samples": 29145,
+    "class_distribution": {
+        "human": 17508,
+        "ai": 11637
+    }
+}

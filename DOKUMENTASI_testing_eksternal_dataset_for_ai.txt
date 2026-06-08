@@ -1,0 +1,155 @@
+JUDUL
+Dokumentasi Program: testing_eksternal_dataset.ipynb
+
+TUJUAN PROGRAM
+Notebook ini dipakai untuk melakukan evaluasi inferensi pada dataset eksternal
+balanced_ai_human_prompts.csv menggunakan model yang sudah dilatih sebelumnya.
+Evaluasi dilakukan untuk seluruh baris data (full-row prediction), bukan sampling.
+
+RINGKASAN SINGKAT
+- Input utama: teks + label biner (generated: 0=Human, 1=AI)
+- Model yang diuji: Random Forest, SVM, Logistic Regression
+- Fitur inferensi: Stylometric + GPT-2 Perplexity + TF-IDF (direduksi) + BERT embedding (direduksi)
+- Output: prediksi per baris, probabilitas, confidence, metrik, confusion matrix, CSV hasil
+
+ALUR PER CELL (BERDASARKAN STRUKTUR NOTEBOOK)
+Cell 1 (Markdown)
+- Menjelaskan tujuan notebook dan output yang dihasilkan.
+
+Cell 2 (Import & environment setup)
+- Import library: numpy, pandas, sklearn, torch, transformers, nltk, plotting.
+- Set environment agar transformers tidak masuk jalur TensorFlow:
+  USE_TF=0, TRANSFORMERS_NO_TF=1, USE_FLAX=0.
+- Set seed untuk reproduktibilitas.
+- Menentukan device: CUDA jika tersedia, jika tidak CPU.
+
+Cell 3 (Load model, artefak, dan data eksternal)
+- Memuat 3 model terlatih dari folder trained_models/.
+- Memuat artefak preprocessing dari folder extracted_features/:
+  tfidf_vectorizer, scaler_stylometric, scaler_perplexity, scaler_tfidf, scaler_bert,
+  pca_tfidf_balanced, pca_bert_balanced.
+- Memuat metadata config dari processed_features/config_info.json (jika ada).
+- Membaca balanced_ai_human_prompts.csv dan validasi kolom:
+  wajib ada kolom text dan generated.
+- Membersihkan baris NaN dan cast generated -> int.
+
+Cell 4 (Definisi algoritma inferensi / fungsi predict)
+- Menyediakan fungsi inti:
+  1) _init_transformer_models()
+	  Memuat BertTokenizer/BertModel dan GPT2TokenizerFast/GPT2LMHeadModel secara lazy.
+  2) _extract_stylometric_features(text)
+	  Ekstraksi 18 fitur stylometric (panjang kata, POS ratio, punctuation ratio, dll).
+  3) _calculate_perplexity(text)
+	  Hitung perplexity GPT-2; fallback 50.0 jika gagal.
+  4) _preprocess_for_tfidf(text)
+	  Lowercase, hapus URL/non-word, stopword filtering.
+  5) _get_bert_embeddings(text)
+	  Ambil embedding BERT (token [CLS]); fallback vector nol 768-dim jika gagal.
+  6) predict_text(text, model_name)
+	  Pipeline penuh:
+	  - ekstraksi fitur mentah
+	  - scaling sesuai artefak training
+	  - reduksi dimensi (PCA/SVD yang sudah disimpan)
+	  - gabung fitur final
+	  - prediksi label + probabilitas dengan model terpilih
+	  - return dict hasil
+  7) Alias: predict_teks = predict_text
+
+Cell 5 (Persiapan evaluasi full row)
+- Ambil semua teks dan label dari external_df.
+- Menyimpan jumlah baris n.
+- Warm-up model transformer (_init_transformer_models()) sebelum loop besar.
+
+Cell 6 (Evaluasi semua model + simpan hasil)
+- Untuk setiap model:
+  - Loop seluruh teks.
+  - Panggil predict_teks(text, model_name).
+  - Simpan label prediksi, probabilitas human/AI, confidence.
+  - Hitung metrik: Accuracy, Precision, Recall, F1.
+  - Hitung confusion matrix.
+- Gabungkan hasil menjadi:
+  - predictions_df (hasil per baris per model)
+  - metrics_df (ringkasan metrik per model)
+- Simpan CSV output ke folder external_results/.
+- Visualisasi confusion matrix dengan heatmap.
+- Cetak classification report per model.
+
+ALGORITMA INTI (PSEUDOCODE)
+1. Load model dan seluruh artefak preprocessing hasil training.
+2. For each text:
+	a. Hitung fitur stylometric.
+	b. Hitung GPT-2 perplexity.
+	c. Transform TF-IDF dari teks yang sudah dibersihkan.
+	d. Ambil embedding BERT.
+	e. Scale tiap blok fitur sesuai scaler training.
+	f. Reduksi TF-IDF dan BERT sesuai PCA/SVD training.
+	g. Gabungkan semua fitur jadi satu vector final.
+	h. Jalankan predict + predict_proba pada model target.
+3. Ulangi untuk tiap model classifier.
+4. Hitung metrik evaluasi dan simpan hasil.
+
+DETAIL INPUT / OUTPUT
+Input file data:
+- balanced_ai_human_prompts.csv
+  Kolom wajib:
+  - text (string)
+  - generated (int; 0=Human, 1=AI)
+
+Model input artifacts (contoh path):
+- trained_models/random_forest_final.pkl
+- trained_models/svm_final.pkl
+- trained_models/logistic_regression_final.pkl
+
+Preprocessing artifacts:
+- extracted_features/tfidf_vectorizer.pkl
+- extracted_features/scaler_stylometric.pkl
+- extracted_features/scaler_perplexity.pkl
+- extracted_features/scaler_tfidf.pkl
+- extracted_features/scaler_bert.pkl
+- extracted_features/pca_tfidf_balanced.pkl
+- extracted_features/pca_bert_balanced.pkl
+
+Output file hasil:
+- external_results/external_predictions_all_rows.csv
+- external_results/external_metrics_summary.csv
+
+HASIL EVALUASI TERAKHIR (DARI external_metrics_summary.csv)
+1) Logistic Regression
+	- Accuracy  : 0.9970909091
+	- Precision : 1.0000000000
+	- Recall    : 0.9941818182
+	- F1        : 0.9970824216
+	- Confusion : TN=1375, FP=0, FN=8, TP=1367
+
+2) SVM
+	- Accuracy  : 0.9658181818
+	- Precision : 0.9360108918
+	- Recall    : 1.0000000000
+	- F1        : 0.9669479606
+	- Confusion : TN=1281, FP=94, FN=0, TP=1375
+
+3) Random Forest
+	- Accuracy  : 0.9345454545
+	- Precision : 0.9925803792
+	- Recall    : 0.8756363636
+	- F1        : 0.9304482226
+	- Confusion : TN=1366, FP=9, FN=171, TP=1204
+
+INTERPRETASI RINGKAS HASIL
+- Logistic Regression memberikan performa terbaik secara keseluruhan pada dataset ini.
+- SVM memiliki recall AI sempurna (FN=0), tetapi false positive human cukup besar (FP=94).
+- Random Forest sangat presisi untuk prediksi AI, tetapi recall AI lebih rendah dibanding dua model lain.
+
+CATATAN IMPLEMENTASI PENTING
+- Program bergantung pada kesesuaian artefak training vs inferensi.
+- Jika model transformer gagal pada sebagian input, terdapat fallback:
+  - perplexity -> 50.0
+  - BERT embedding -> vector nol
+- Inference full-row dengan BERT+GPT-2 cukup berat dan memakan waktu.
+
+RINGKASAN UNTUK AI ANALYZER
+Program ini adalah pipeline klasifikasi teks biner (Human vs AI) yang menggabungkan
+fitur linguistik manual + fitur semantic transformer, lalu menguji tiga model klasik
+yang sudah dilatih. Fokus utama notebook ini adalah evaluasi komprehensif dataset eksternal
+dengan pelaporan metrik dan confusion matrix per model.
+
